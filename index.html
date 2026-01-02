@@ -2,13 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Plus, 
-  Trash2, 
-  Save, 
-  BarChart3, 
+import {
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Trash2,
+  Save,
+  BarChart3,
   Calendar as CalendarIcon,
   CupSoda,
   TrendingUp,
@@ -23,33 +23,25 @@ import {
 } from 'lucide-react';
 
 /**
- * 佈署說明：
- * 1. 確保 Firebase 配置已正確填寫。
- * 2. 如果在 GitHub Pages 執行，請確保 Firebase Console 已加入您的網域白名單。
+ * 🚀 GitHub Pages 部署配置
+ * 如果您是在本地開發或部署到 GitHub，請確保以下變數已正確設定。
  */
-
-// 安全取得環境變數（支援開發環境與佈署環境）
-const getFirebaseConfig = () => {
-  try {
-    return typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-      apiKey: "", // 佈署前請確保此處有正確配置或環境變數注入
-      authDomain: "",
-      projectId: "",
-      storageBucket: "",
-      messagingSenderId: "",
-      appId: ""
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+  ? JSON.parse(__firebase_config) 
+  : {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
     };
-  } catch (e) {
-    return {};
-  }
-};
 
-const firebaseConfig = getFirebaseConfig();
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'drink-tracker-2026';
-const apiKey = ""; // 執行環境會自動注入或手動填入
+const apiKey = ""; // 如果需要 AI 功能，請在此填入 Google Gemini API Key
 
 const ICE_LEVELS = ['正常', '少冰', '微冰', '去冰', '常溫', '溫'];
 const SUGAR_LEVELS = ['全糖', '少糖', '半糖', '微糖', '一分糖', '無糖'];
@@ -70,7 +62,6 @@ export default function App() {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
-  // 遵循 RULE 3: 先驗證身份再進行 Firestore 操作
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -80,7 +71,7 @@ export default function App() {
           await signInAnonymously(auth);
         }
       } catch (err) {
-        console.error("Auth initialization failed", err);
+        console.error("Auth initialization failed:", err);
       }
     };
     initAuth();
@@ -88,7 +79,6 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 監聽數據 (遵循 RULE 1 & 2)
   useEffect(() => {
     if (!user) return;
     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'records', 'yearly2026');
@@ -98,7 +88,7 @@ export default function App() {
       }
       setLoading(false);
     }, (error) => {
-      console.error("Firestore Listen error:", error);
+      console.error("Firestore Listen Error:", error);
       setLoading(false);
     });
     return () => unsubscribe();
@@ -139,26 +129,30 @@ export default function App() {
     };
   }, [allRecords]);
 
-  // ✨ Gemini API 分析
+  // ✨ Gemini API: 分析飲品趨勢與推薦
   const getAiInsight = async () => {
-    if (!apiKey && typeof __api_key === 'undefined') {
-      setAiAnalysis("API Key 未配置。");
+    if (!apiKey) {
+      setAiAnalysis("請先設定 API Key 以啟用 AI 功能。");
       return;
     }
     setIsAiLoading(true);
     const recentDrinks = stats.rawHistory.slice(-10).map(d => `${d.shop} 的 ${d.name} (${d.sugar}, ${d.ice})`).join(', ');
-    const prompt = `我最近喝了這些手搖飲：${recentDrinks || '尚未記錄'}。分析口味偏好、推薦今日組合（台灣常見店、品項、建議比例）、健康叮嚀。繁體中文，親切活潑。`;
+    const prompt = `我最近喝了這些手搖飲：${recentDrinks || '尚未記錄'}。
+    請根據這些歷史記錄：
+    1. 分析我的口味偏好（例如：喜歡茶類、喜歡奶類、或是偏好某種配料）。
+    2. 給我一個 ✨「今日推薦組合」：推薦一家台灣常見飲料店、一個具體品項、以及你建議的甜度冰塊與加料。
+    3. 給我一小段幽默的健康叮嚀。
+    請用繁體中文回答，語氣要活潑親切，像是一位資深飲料店店長。`;
 
-    const finalKey = apiKey || (typeof __api_key !== 'undefined' ? __api_key : "");
-    
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${finalKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
       });
       const result = await response.json();
-      setAiAnalysis(result.candidates?.[0]?.content?.parts?.[0]?.text || "分析結果為空。");
+      const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      setAiAnalysis(text);
     } catch (error) {
       setAiAnalysis("AI 休息中，請稍後再試。");
     } finally {
@@ -166,16 +160,14 @@ export default function App() {
     }
   };
 
-  // ✨ Gemini TTS
+  // ✨ Gemini TTS: 唸出年度統計數據
   const speakStats = async () => {
-    const finalKey = apiKey || (typeof __api_key !== 'undefined' ? __api_key : "");
-    if (!finalKey) return;
-
+    if (!apiKey) return;
     setIsSpeaking(true);
-    const text = `店長報數時間！你在 2026 年已經喝了 ${stats.totalCups} 杯飲料，總共花了 ${stats.totalCost} 元。最愛店家是 ${stats.favoriteStore}。`;
+    const text = `店長報數時間！你在 2026 年已經喝了 ${stats.totalCups} 杯飲料，總共花了 ${stats.totalCost} 元。平均一杯是 ${stats.avgPrice} 元。你最愛的飲料店是 ${stats.favoriteStore}，最愛的品項則是 ${stats.favoriteItem}。喝飲料也要記得喝水喔！`;
     
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${finalKey}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -256,14 +248,14 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-sky-400 via-sky-100 to-white pb-12 font-sans selection:bg-sky-200">
+    <div className="min-h-screen bg-gradient-to-b from-sky-400 via-sky-100 to-white pb-12 font-sans">
       <div className="bg-white/90 sticky top-0 z-40 backdrop-blur-md shadow-sm px-6 py-3 flex justify-between items-center">
         <div className="flex items-center gap-2 text-sky-600 font-black text-xl">
           <CupSoda className="animate-pulse" /> 我超愛喝手搖
         </div>
         <div className="flex items-center gap-4">
           <span className="text-xs font-bold text-sky-400">{saveStatus}</span>
-          <button 
+          <button
             onClick={handleQuickRecord}
             className="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 shadow-lg shadow-sky-200 transition-all active:scale-95"
           >
@@ -294,14 +286,14 @@ export default function App() {
                 <p className="text-sky-100 font-medium">基於你的飲用紀錄為你提供專屬建議</p>
               </div>
               <div className="flex gap-2">
-                <button 
-                  onClick={getAiInsight} 
+                <button
+                  onClick={getAiInsight}
                   disabled={isAiLoading}
                   className="bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full font-bold flex items-center gap-2 transition-all border border-white/30 backdrop-blur-sm"
                 >
                   {isAiLoading ? <Loader2 className="animate-spin" /> : <BrainCircuit size={18} />} ✨ 分析推薦
                 </button>
-                <button 
+                <button
                   onClick={speakStats}
                   disabled={isSpeaking}
                   className="bg-amber-400 hover:bg-amber-500 text-sky-900 px-6 py-2 rounded-full font-bold flex items-center gap-2 transition-all shadow-lg"
@@ -310,6 +302,7 @@ export default function App() {
                 </button>
               </div>
             </div>
+            
             {aiAnalysis ? (
               <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 animate-in fade-in slide-in-from-bottom-2">
                 <p className="whitespace-pre-wrap leading-relaxed font-medium">{aiAnalysis}</p>
@@ -351,8 +344,8 @@ export default function App() {
                     key={day}
                     onClick={() => setSelectedDate(day)}
                     className={`aspect-square rounded-3xl border-2 flex flex-col items-center justify-center transition-all relative group
-                      ${hasData 
-                        ? 'bg-sky-100 border-sky-400 shadow-inner' 
+                      ${hasData
+                        ? 'bg-sky-100 border-sky-400 shadow-inner'
                         : 'bg-white border-sky-50 hover:border-sky-300 hover:scale-105 shadow-sm'
                       }`}
                   >
@@ -375,8 +368,8 @@ export default function App() {
       </div>
 
       {selectedDate && (
-        <div className="fixed inset-0 bg-sky-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-[3rem] w-full max-w-5xl my-auto shadow-2xl relative">
+        <div className="fixed inset-0 bg-sky-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[3rem] w-full max-w-5xl max-h-[90vh] overflow-y-auto shadow-2xl relative">
             <div className="sticky top-0 bg-white/80 backdrop-blur-md px-8 py-6 flex justify-between items-center border-b border-sky-50 z-20">
               <h3 className="text-2xl font-black text-sky-600 flex items-center gap-3">
                 <CalendarIcon /> 2026 / {currentDate.getMonth() + 1} / {selectedDate}
@@ -385,7 +378,7 @@ export default function App() {
                 <button onClick={() => setSelectedDate(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
                   <X size={28} />
                 </button>
-                <button 
+                <button
                   onClick={() => { saveToCloud(allRecords); setSelectedDate(null); }}
                   className="bg-sky-500 hover:bg-sky-600 text-white px-10 py-3 rounded-full font-black flex items-center gap-2 shadow-xl shadow-sky-200 transition-all active:scale-95"
                 >
@@ -455,9 +448,9 @@ function StatMiniCard({ icon, label, value, unit = "" }) {
       <div className="p-3 bg-sky-100 rounded-2xl text-sky-500 group-hover:bg-sky-500 group-hover:text-white transition-colors">
         {icon}
       </div>
-      <div className="min-w-0">
+      <div>
         <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{label}</p>
-        <p className="text-lg font-black text-slate-700 truncate">{value}{unit}</p>
+        <p className="text-lg font-black text-slate-700 truncate max-w-[100px]">{value}{unit}</p>
       </div>
     </div>
   );
@@ -467,7 +460,7 @@ function InputGroup({ label, value, onChange, placeholder, type = "text" }) {
   return (
     <div>
       <label className="block text-xs font-black text-sky-400 mb-2 uppercase tracking-widest">{label}</label>
-      <input 
+      <input
         type={type}
         className="w-full bg-white border-2 border-transparent focus:border-sky-200 rounded-2xl px-4 py-3 text-slate-700 font-bold outline-none transition-all placeholder:text-slate-200 shadow-sm"
         placeholder={placeholder}
