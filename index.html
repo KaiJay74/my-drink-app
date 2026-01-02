@@ -1,312 +1,498 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+import React, { useState, useEffect, useMemo } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  Plus, 
+  Trash2, 
+  Save, 
+  BarChart3, 
+  Calendar as CalendarIcon,
+  CupSoda,
+  TrendingUp,
+  Store,
+  Wallet,
+  Zap,
+  X,
+  Sparkles,
+  Volume2,
+  BrainCircuit,
+  Loader2
+} from 'lucide-react';
+
+/**
+ * 佈署說明：
+ * 1. 確保 Firebase 配置已正確填寫。
+ * 2. 如果在 GitHub Pages 執行，請確保 Firebase Console 已加入您的網域白名單。
+ */
+
+// 安全取得環境變數（支援開發環境與佈署環境）
+const getFirebaseConfig = () => {
+  try {
+    return typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+      apiKey: "", // 佈署前請確保此處有正確配置或環境變數注入
+      authDomain: "",
+      projectId: "",
+      storageBucket: "",
+      messagingSenderId: "",
+      appId: ""
+    };
+  } catch (e) {
+    return {};
+  }
+};
+
+const firebaseConfig = getFirebaseConfig();
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'drink-tracker-2026';
+const apiKey = ""; // 執行環境會自動注入或手動填入
+
+const ICE_LEVELS = ['正常', '少冰', '微冰', '去冰', '常溫', '溫'];
+const SUGAR_LEVELS = ['全糖', '少糖', '半糖', '微糖', '一分糖', '無糖'];
+const TOPPINGS = ['珍珠', '燕麥', '粉粿', '粉角', '粉圓', '雙Q', '仙草', '芋圓'];
+const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+const MONTHS = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [allRecords, setAllRecords] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState('');
+  
+  // AI 相關狀態
+  const [aiAnalysis, setAiAnalysis] = useState('');
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  // 遵循 RULE 3: 先驗證身份再進行 Firestore 操作
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth initialization failed", err);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  // 監聽數據 (遵循 RULE 1 & 2)
+  useEffect(() => {
+    if (!user) return;
+    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'records', 'yearly2026');
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setAllRecords(docSnap.data().data || {});
+      }
+      setLoading(false);
+    }, (error) => {
+      console.error("Firestore Listen error:", error);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  const saveToCloud = async (newData) => {
+    if (!user) return;
+    setSaveStatus('儲存中...');
+    try {
+      await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', 'yearly2026'), {
+        data: newData,
+        lastUpdated: new Date().toISOString()
+      });
+      setSaveStatus('已安全儲存');
+      setTimeout(() => setSaveStatus(''), 2000);
+    } catch (e) {
+      setSaveStatus('儲存失敗');
+    }
+  };
+
+  const stats = useMemo(() => {
+    const data = Object.values(allRecords).flat().filter(r => r && r.name);
+    const totalCups = data.length;
+    const totalCost = data.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+    const storeCounts = {};
+    const itemCounts = {};
+    data.forEach(d => {
+      if (d.shop) storeCounts[d.shop] = (storeCounts[d.shop] || 0) + 1;
+      if (d.name) itemCounts[d.name] = (itemCounts[d.name] || 0) + 1;
+    });
+    return {
+      totalCups,
+      totalCost,
+      avgPrice: totalCups > 0 ? Math.round(totalCost / totalCups) : 0,
+      favoriteStore: Object.entries(storeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '無',
+      favoriteItem: Object.entries(itemCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '無',
+      rawHistory: data
+    };
+  }, [allRecords]);
+
+  // ✨ Gemini API 分析
+  const getAiInsight = async () => {
+    if (!apiKey && typeof __api_key === 'undefined') {
+      setAiAnalysis("API Key 未配置。");
+      return;
+    }
+    setIsAiLoading(true);
+    const recentDrinks = stats.rawHistory.slice(-10).map(d => `${d.shop} 的 ${d.name} (${d.sugar}, ${d.ice})`).join(', ');
+    const prompt = `我最近喝了這些手搖飲：${recentDrinks || '尚未記錄'}。分析口味偏好、推薦今日組合（台灣常見店、品項、建議比例）、健康叮嚀。繁體中文，親切活潑。`;
+
+    const finalKey = apiKey || (typeof __api_key !== 'undefined' ? __api_key : "");
     
-    <!-- PWA 滿版與 iOS 優化 -->
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="手搖紀錄">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="theme-color" content="#0ea5e9">
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${finalKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+      });
+      const result = await response.json();
+      setAiAnalysis(result.candidates?.[0]?.content?.parts?.[0]?.text || "分析結果為空。");
+    } catch (error) {
+      setAiAnalysis("AI 休息中，請稍後再試。");
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  // ✨ Gemini TTS
+  const speakStats = async () => {
+    const finalKey = apiKey || (typeof __api_key !== 'undefined' ? __api_key : "");
+    if (!finalKey) return;
+
+    setIsSpeaking(true);
+    const text = `店長報數時間！你在 2026 年已經喝了 ${stats.totalCups} 杯飲料，總共花了 ${stats.totalCost} 元。最愛店家是 ${stats.favoriteStore}。`;
     
-    <!-- 桌面圖示 -->
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3054/3054889.png">
-    
-    <title>我超愛喝手搖 2026</title>
-    
-    <!-- 引入外部資源 -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${finalKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `Say warmly and cheerfully: ${text}` }] }],
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } }
+          },
+          model: "gemini-2.5-flash-preview-tts"
+        })
+      });
+      const result = await response.json();
+      const base64Audio = result.candidates[0].content.parts[0].inlineData.data;
+      
+      const audioBlob = await (await fetch(`data:audio/l16;rate=24000;base64,${base64Audio}`)).blob();
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      
+      const wavHeader = new ArrayBuffer(44);
+      const view = new DataView(wavHeader);
+      const writeString = (offset, string) => { for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i)); };
+      writeString(0, 'RIFF');
+      view.setUint32(4, 36 + arrayBuffer.byteLength, true);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, 24000, true);
+      view.setUint32(28, 48000, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeString(36, 'data');
+      view.setUint32(40, arrayBuffer.byteLength, true);
+      
+      const blob = new Blob([wavHeader, arrayBuffer], { type: 'audio/wav' });
+      const audio = new Audio(URL.createObjectURL(blob));
+      audio.onended = () => setIsSpeaking(false);
+      audio.play();
+    } catch (error) {
+      console.error(error);
+      setIsSpeaking(false);
+    }
+  };
 
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background-color: #f8fafc;
-            -webkit-user-select: none;
-            -webkit-touch-callout: none;
-        }
-        #root {
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-        }
-        .scroll-container {
-            flex: 1;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-        }
-        .scroll-container::-webkit-scrollbar {
-            display: none;
-        }
-        @keyframes slideUp {
-            from { transform: translateY(100%); }
-            to { transform: translateY(0); }
-        }
-        .animate-slide-up {
-            animation: slideUp 0.3s ease-out forwards;
-        }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
+  const handleQuickRecord = () => {
+    const today = new Date();
+    setSelectedDate(today.getDate());
+    setCurrentDate(new Date(2026, today.getMonth(), 1));
+  };
 
-    <!-- Firebase SDK 必須先載入 -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+  const updateEntry = (dateKey, index, field, value) => {
+    const updated = { ...allRecords };
+    if (!updated[dateKey]) updated[dateKey] = [{}, {}];
+    const dayData = [...updated[dateKey]];
+    dayData[index] = { ...dayData[index], [field]: value };
+    updated[dateKey] = dayData;
+    setAllRecords(updated);
+  };
 
-        // 將 Firebase 實例掛載到 window 以供 Babel 腳本使用
-        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, setDoc, onSnapshot };
-    </script>
+  const clearEntry = (dateKey, index) => {
+    const updated = { ...allRecords };
+    if (updated[dateKey]) {
+      const dayData = [...updated[dateKey]];
+      dayData[index] = {};
+      updated[dateKey] = dayData;
+      setAllRecords(updated);
+      saveToCloud(updated);
+    }
+  };
 
-    <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+  if (loading) return (
+    <div className="flex h-screen items-center justify-center bg-sky-50">
+      <div className="text-sky-500 animate-bounce flex flex-col items-center">
+        <CupSoda size={48} />
+        <span className="mt-4 font-bold">開啟手搖日誌中...</span>
+      </div>
+    </div>
+  );
 
-        // --- 重要：手動部署設定 ---
-        const firebaseConfig = {
-            apiKey: "你的_API_KEY",
-            authDomain: "你的_PROJECT_ID.firebaseapp.com",
-            projectId: "你的_PROJECT_ID",
-            storageBucket: "你的_PROJECT_ID.appspot.com",
-            messagingSenderId: "你的_SENDER_ID",
-            appId: "你的_APP_ID"
-        };
-        
-        const appId = 'my-drink-app';
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-sky-400 via-sky-100 to-white pb-12 font-sans selection:bg-sky-200">
+      <div className="bg-white/90 sticky top-0 z-40 backdrop-blur-md shadow-sm px-6 py-3 flex justify-between items-center">
+        <div className="flex items-center gap-2 text-sky-600 font-black text-xl">
+          <CupSoda className="animate-pulse" /> 我超愛喝手搖
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-xs font-bold text-sky-400">{saveStatus}</span>
+          <button 
+            onClick={handleQuickRecord}
+            className="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 shadow-lg shadow-sky-200 transition-all active:scale-95"
+          >
+            <Zap size={16} /> 快速紀錄今天
+          </button>
+        </div>
+      </div>
 
-        function App() {
-            const [user, setUser] = useState(null);
-            const [allRecords, setAllRecords] = useState({});
-            const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
-            const [selectedDate, setSelectedDate] = useState(null);
-            const [loading, setLoading] = useState(true);
-            const [isDemo, setIsDemo] = useState(false);
+      <div className="max-w-6xl mx-auto px-4 mt-8 space-y-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <StatMiniCard icon={<CupSoda />} label="年度杯數" value={stats.totalCups} unit="杯" />
+          <StatMiniCard icon={<Wallet />} label="年度總支出" value={stats.totalCost} unit="元" />
+          <StatMiniCard icon={<TrendingUp />} label="平均單價" value={stats.avgPrice} unit="元" />
+          <StatMiniCard icon={<Store />} label="最愛店家" value={stats.favoriteStore} />
+          <StatMiniCard icon={<Plus />} label="最愛品項" value={stats.favoriteItem} />
+        </div>
 
-            useEffect(() => {
-                const initFirebase = async () => {
-                    const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, onSnapshot } = window.FirebaseSDK;
+        <div className="bg-gradient-to-r from-sky-600 to-blue-500 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:rotate-12 transition-transform">
+            <BrainCircuit size={120} />
+          </div>
+          <div className="relative z-10">
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+              <div>
+                <h3 className="text-2xl font-black flex items-center gap-2">
+                  <Sparkles className="text-amber-300" /> ✨ AI 飲品大師
+                </h3>
+                <p className="text-sky-100 font-medium">基於你的飲用紀錄為你提供專屬建議</p>
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={getAiInsight} 
+                  disabled={isAiLoading}
+                  className="bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full font-bold flex items-center gap-2 transition-all border border-white/30 backdrop-blur-sm"
+                >
+                  {isAiLoading ? <Loader2 className="animate-spin" /> : <BrainCircuit size={18} />} ✨ 分析推薦
+                </button>
+                <button 
+                  onClick={speakStats}
+                  disabled={isSpeaking}
+                  className="bg-amber-400 hover:bg-amber-500 text-sky-900 px-6 py-2 rounded-full font-bold flex items-center gap-2 transition-all shadow-lg"
+                >
+                  {isSpeaking ? <Loader2 className="animate-spin" /> : <Volume2 size={18} />} ✨ 報數聽聽看
+                </button>
+              </div>
+            </div>
+            {aiAnalysis ? (
+              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 animate-in fade-in slide-in-from-bottom-2">
+                <p className="whitespace-pre-wrap leading-relaxed font-medium">{aiAnalysis}</p>
+              </div>
+            ) : (
+              <p className="text-sky-100 italic text-center py-4">點擊「✨ 分析推薦」讓 AI 幫你看看喝得健不健康！</p>
+            )}
+          </div>
+        </div>
 
-                    if (firebaseConfig.apiKey === "你的_API_KEY") {
-                        setIsDemo(true);
-                        setLoading(false);
-                        return;
-                    }
+        <div className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
+          <div className="bg-sky-500 p-8 flex items-center justify-between text-white">
+            <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+              <ChevronLeft size={32} />
+            </button>
+            <div className="text-center">
+              <h2 className="text-3xl font-black">{MONTHS[currentDate.getMonth()]}</h2>
+              <p className="opacity-80 font-bold">{currentDate.getFullYear()}</p>
+            </div>
+            <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+              <ChevronRight size={32} />
+            </button>
+          </div>
 
-                    try {
-                        const app = initializeApp(firebaseConfig);
-                        const auth = getAuth(app);
-                        const db = getFirestore(app);
-
-                        await signInAnonymously(auth);
-                        onAuthStateChanged(auth, (u) => {
-                            setUser(u);
-                            if (u) {
-                                const docRef = doc(db, 'artifacts', appId, 'users', u.uid, 'records', 'yearly2026');
-                                onSnapshot(docRef, (docSnap) => {
-                                    if (docSnap.exists()) setAllRecords(docSnap.data().data || {});
-                                    setLoading(false);
-                                }, (error) => {
-                                    setLoading(false);
-                                });
-                            }
-                        });
-                    } catch (e) {
-                        setIsDemo(true);
-                        setLoading(false);
-                    }
-                };
-                
-                initFirebase();
-            }, []);
-
-            const saveToCloud = async (newData) => {
-                if (isDemo) {
-                    setAllRecords(newData);
-                    return;
-                }
-                if (!user) return;
-                try {
-                    const { getFirestore, doc, setDoc } = window.FirebaseSDK;
-                    const db = getFirestore();
-                    await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', 'yearly2026'), {
-                        data: newData,
-                        lastUpdated: new Date().toISOString()
-                    });
-                } catch (e) {
-                    console.error("Save error", e);
-                }
-            };
-
-            const stats = useMemo(() => {
-                const data = Object.values(allRecords).flat().filter(r => r && r.name);
-                return {
-                    totalCups: data.length,
-                    totalCost: data.reduce((sum, item) => sum + (Number(item.price) || 0), 0)
-                };
-            }, [allRecords]);
-
-            if (loading) return (
-                <div className="h-full flex flex-col items-center justify-center bg-sky-50 text-sky-500">
-                    <div className="animate-bounce mb-4"><i data-lucide="cup-soda" style={{width: 64, height: 64}}></i></div>
-                    <p className="font-black text-xs tracking-widest uppercase">載入中...</p>
-                </div>
-            );
-
-            return (
-                <div className="h-full flex flex-col">
-                    <div className="bg-sky-500 pt-[env(safe-area-inset-top)] shrink-0 shadow-lg">
-                        <div className="px-6 py-4 flex justify-between items-center text-white">
-                            <h1 className="font-black text-xl flex items-center gap-2">
-                                <i data-lucide="cup-soda"></i> 手搖紀錄 2026
-                            </h1>
-                            <div className={`px-3 py-1 rounded-full text-[10px] font-bold ${isDemo ? 'bg-orange-400' : 'bg-white/20'}`}>
-                                {isDemo ? '預覽模式' : '雲端同步中'}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="scroll-container bg-slate-50 p-6 space-y-6">
-                        {isDemo && (
-                            <div className="bg-orange-50 border border-orange-100 p-4 rounded-2xl text-orange-600 text-[10px] font-bold">
-                                提醒：請至代碼中替換 Firebase 金鑰以啟用雲端存取。
-                            </div>
-                        )}
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100 h-28 flex flex-col justify-between">
-                                <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase">總杯數</span>
-                                <span className="text-3xl font-black text-sky-600 leading-none">{stats.totalCups}</span>
-                            </div>
-                            <div className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100 h-28 flex flex-col justify-between">
-                                <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase">總支出</span>
-                                <span className="text-3xl font-black text-emerald-500 leading-none">${stats.totalCost}</span>
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-                            <div className="p-6 bg-slate-50/50 flex justify-between items-center">
-                                <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}>
-                                    <i data-lucide="chevron-left" className="text-slate-300"></i>
-                                </button>
-                                <span className="font-black text-lg text-slate-800">
-                                    {currentDate.getFullYear()}年 {currentDate.getMonth() + 1}月
-                                </span>
-                                <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}>
-                                    <i data-lucide="chevron-right" className="text-slate-300"></i>
-                                </button>
-                            </div>
-                            <div className="p-6">
-                                <div className="grid grid-cols-7 gap-2">
-                                    {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
-                                        const day = i + 1;
-                                        const key = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${day}`;
-                                        const hasData = allRecords[key]?.some(r => r.name);
-                                        return (
-                                            <button 
-                                                key={day}
-                                                onClick={() => setSelectedDate(day)}
-                                                className={`aspect-square rounded-2xl flex items-center justify-center font-black text-sm transition-all
-                                                    ${hasData ? 'bg-sky-500 text-white shadow-lg scale-105' : 'bg-slate-50 text-slate-400 active:bg-slate-100'}`}
-                                            >
-                                                {day}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-white/80 backdrop-blur-xl border-t border-slate-100 px-10 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] flex justify-around shrink-0">
-                        <button className="text-sky-500 flex flex-col items-center gap-1">
-                            <i data-lucide="calendar"></i>
-                            <span className="text-[10px] font-bold">日誌</span>
-                        </button>
-                        <button className="text-slate-300 flex flex-col items-center gap-1">
-                            <i data-lucide="sparkles"></i>
-                            <span className="text-[10px] font-bold">分析</span>
-                        </button>
-                    </div>
-
-                    {selectedDate && (
-                        <div className="fixed inset-0 bg-white z-[100] flex flex-col pt-[env(safe-area-inset-top)] animate-slide-up">
-                            <div className="px-6 py-4 border-b flex justify-between items-center bg-white sticky top-0">
-                                <button onClick={() => setSelectedDate(null)} className="text-slate-300"><i data-lucide="x" style={{width: 32, height: 32}}></i></button>
-                                <span className="font-black text-lg">{currentDate.getMonth() + 1}月{selectedDate}日 紀錄</span>
-                                <button 
-                                    onClick={() => { saveToCloud(allRecords); setSelectedDate(null); }}
-                                    className="bg-sky-500 text-white px-6 py-2 rounded-2xl font-black text-sm shadow-md"
-                                >
-                                    儲存
-                                </button>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/30 pb-20">
-                                {[0, 1].map(idx => {
-                                    const dKey = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${selectedDate}`;
-                                    const data = (allRecords[dKey] && allRecords[dKey][idx]) || {};
-                                    return (
-                                        <div key={idx} className="bg-white rounded-[2.5rem] p-6 space-y-4 shadow-sm border border-slate-100">
-                                            <div className="text-[10px] font-black text-slate-300 tracking-widest uppercase">第 {idx + 1} 杯</div>
-                                            <div className="space-y-3">
-                                                <input 
-                                                    type="text" 
-                                                    placeholder="哪家手搖店？" 
-                                                    value={data.shop || ''}
-                                                    onChange={(e) => {
-                                                        const updated = {...allRecords};
-                                                        if(!updated[dKey]) updated[dKey] = [{}, {}];
-                                                        updated[dKey][idx].shop = e.target.value;
-                                                        setAllRecords(updated);
-                                                    }}
-                                                    className="w-full bg-slate-50 p-5 rounded-3xl font-bold outline-none border border-transparent focus:border-sky-100 transition-all"
-                                                />
-                                                <input 
-                                                    type="text" 
-                                                    placeholder="喝什麼品項？" 
-                                                    value={data.name || ''}
-                                                    onChange={(e) => {
-                                                        const updated = {...allRecords};
-                                                        if(!updated[dKey]) updated[dKey] = [{}, {}];
-                                                        updated[dKey][idx].name = e.target.value;
-                                                        setAllRecords(updated);
-                                                    }}
-                                                    className="w-full bg-slate-50 p-5 rounded-3xl font-bold outline-none border border-transparent focus:border-sky-100 transition-all"
-                                                />
-                                                <input 
-                                                    type="number" 
-                                                    placeholder="這杯多少錢？" 
-                                                    value={data.price || ''}
-                                                    onChange={(e) => {
-                                                        const updated = {...allRecords};
-                                                        if(!updated[dKey]) updated[dKey] = [{}, {}];
-                                                        updated[dKey][idx].price = e.target.value;
-                                                        setAllRecords(updated);
-                                                    }}
-                                                    className="w-full bg-slate-50 p-5 rounded-3xl font-bold outline-none border border-transparent focus:border-sky-100 transition-all"
-                                                />
-                                            </div>
-                                        </div>
-                                    )
-                                })}
-                            </div>
-                        </div>
+          <div className="p-6 md:p-10">
+            <div className="grid grid-cols-7 mb-6 text-sky-300 font-black text-center uppercase tracking-widest text-sm">
+              {WEEKDAYS.map(d => <div key={d}>{d}</div>)}
+            </div>
+            <div className="grid grid-cols-7 gap-3">
+              {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay() }).map((_, i) => (
+                <div key={`empty-${i}`} className="aspect-square"></div>
+              ))}
+              {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
+                const day = i + 1;
+                const key = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${day}`;
+                const hasData = allRecords[key]?.some(r => r.name);
+                return (
+                  <button
+                    key={day}
+                    onClick={() => setSelectedDate(day)}
+                    className={`aspect-square rounded-3xl border-2 flex flex-col items-center justify-center transition-all relative group
+                      ${hasData 
+                        ? 'bg-sky-100 border-sky-400 shadow-inner' 
+                        : 'bg-white border-sky-50 hover:border-sky-300 hover:scale-105 shadow-sm'
+                      }`}
+                  >
+                    <span className={`text-xl font-black ${hasData ? 'text-sky-600' : 'text-slate-300 group-hover:text-sky-400'}`}>
+                      {day}
+                    </span>
+                    {hasData && (
+                      <div className="mt-1 flex gap-1">
+                        {allRecords[key].filter(r => r.name).map((_, idx) => (
+                          <div key={idx} className="w-2 h-2 rounded-full bg-sky-500 animate-pulse"></div>
+                        ))}
+                      </div>
                     )}
-                </div>
-            );
-        }
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-        setInterval(() => lucide.createIcons(), 500);
-    </script>
-</body>
-</html>
+      {selectedDate && (
+        <div className="fixed inset-0 bg-sky-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-[3rem] w-full max-w-5xl my-auto shadow-2xl relative">
+            <div className="sticky top-0 bg-white/80 backdrop-blur-md px-8 py-6 flex justify-between items-center border-b border-sky-50 z-20">
+              <h3 className="text-2xl font-black text-sky-600 flex items-center gap-3">
+                <CalendarIcon /> 2026 / {currentDate.getMonth() + 1} / {selectedDate}
+              </h3>
+              <div className="flex gap-4">
+                <button onClick={() => setSelectedDate(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+                  <X size={28} />
+                </button>
+                <button 
+                  onClick={() => { saveToCloud(allRecords); setSelectedDate(null); }}
+                  className="bg-sky-500 hover:bg-sky-600 text-white px-10 py-3 rounded-full font-black flex items-center gap-2 shadow-xl shadow-sky-200 transition-all active:scale-95"
+                >
+                  <Save /> 儲存紀錄
+                </button>
+              </div>
+            </div>
+
+            <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+              {[0, 1].map(idx => {
+                const dKey = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${selectedDate}`;
+                const data = (allRecords[dKey] && allRecords[dKey][idx]) || {};
+                return (
+                  <div key={idx} className="bg-sky-50/50 rounded-[2.5rem] p-8 border border-sky-100 relative">
+                    <div className="flex justify-between items-center mb-6">
+                      <span className="bg-white text-sky-600 px-6 py-2 rounded-full text-sm font-black shadow-sm">
+                        DRINK NO. {idx + 1}
+                      </span>
+                      <button onClick={() => clearEntry(dKey, idx)} className="text-slate-300 hover:text-red-500 transition-colors">
+                        <Trash2 size={24} />
+                      </button>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-2 gap-4">
+                        <InputGroup label="店名" value={data.shop} onChange={(v) => updateEntry(dKey, idx, 'shop', v)} placeholder="例如：迷客夏" />
+                        <InputGroup label="品項" value={data.name} onChange={(v) => updateEntry(dKey, idx, 'name', v)} placeholder="例如：珍珠鮮奶" />
+                      </div>
+                      <InputGroup label="價格" type="number" value={data.price} onChange={(v) => updateEntry(dKey, idx, 'price', v)} placeholder="0" />
+                      
+                      <OptionSelector label="冰塊" options={ICE_LEVELS} selected={data.ice} onSelect={(v) => updateEntry(dKey, idx, 'ice', v)} />
+                      <OptionSelector label="甜度" options={SUGAR_LEVELS} selected={data.sugar} onSelect={(v) => updateEntry(dKey, idx, 'sugar', v)} />
+                      
+                      <div>
+                        <label className="block text-xs font-black text-sky-400 mb-3 uppercase tracking-widest">加料選項</label>
+                        <div className="flex flex-wrap gap-2">
+                          {TOPPINGS.map(t => (
+                            <button
+                              key={t}
+                              onClick={() => {
+                                const list = data.toppings || [];
+                                const newList = list.includes(t) ? list.filter(x => x !== t) : [...list, t];
+                                updateEntry(dKey, idx, 'toppings', newList);
+                              }}
+                              className={`px-4 py-2 rounded-2xl text-sm font-bold transition-all ${data.toppings?.includes(t) ? 'bg-sky-500 text-white' : 'bg-white text-slate-400 hover:bg-sky-100'}`}
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatMiniCard({ icon, label, value, unit = "" }) {
+  return (
+    <div className="bg-white/80 backdrop-blur rounded-[2rem] p-5 shadow-lg border border-white flex items-center gap-4 group hover:scale-105 transition-transform">
+      <div className="p-3 bg-sky-100 rounded-2xl text-sky-500 group-hover:bg-sky-500 group-hover:text-white transition-colors">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{label}</p>
+        <p className="text-lg font-black text-slate-700 truncate">{value}{unit}</p>
+      </div>
+    </div>
+  );
+}
+
+function InputGroup({ label, value, onChange, placeholder, type = "text" }) {
+  return (
+    <div>
+      <label className="block text-xs font-black text-sky-400 mb-2 uppercase tracking-widest">{label}</label>
+      <input 
+        type={type}
+        className="w-full bg-white border-2 border-transparent focus:border-sky-200 rounded-2xl px-4 py-3 text-slate-700 font-bold outline-none transition-all placeholder:text-slate-200 shadow-sm"
+        placeholder={placeholder}
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
+function OptionSelector({ label, options, selected, onSelect }) {
+  return (
+    <div>
+      <label className="block text-xs font-black text-sky-400 mb-3 uppercase tracking-widest">{label}</label>
+      <div className="grid grid-cols-3 gap-2">
+        {options.map(opt => (
+          <button
+            key={opt}
+            onClick={() => onSelect(opt)}
+            className={`py-2 rounded-xl text-xs font-bold transition-all ${selected === opt ? 'bg-sky-500 text-white shadow-lg' : 'bg-white text-slate-400 hover:border-sky-200 border-2 border-transparent'}`}
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
