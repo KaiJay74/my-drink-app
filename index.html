@@ -1,491 +1,131 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  Trash2,
-  Save,
-  BarChart3,
-  Calendar as CalendarIcon,
-  CupSoda,
-  TrendingUp,
-  Store,
-  Wallet,
-  Zap,
-  X,
-  Sparkles,
-  Volume2,
-  BrainCircuit,
-  Loader2
-} from 'lucide-react';
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="我超愛喝手搖">
+  <meta name="theme-color" content="#0ea5e9">
+  <title>我超愛喝手搖</title>
 
-/**
- * 🚀 GitHub Pages 部署配置
- * 如果您是在本地開發或部署到 GitHub，請確保以下變數已正確設定。
- */
-const firebaseConfig = typeof __firebase_config !== 'undefined' 
-  ? JSON.parse(__firebase_config) 
-  : {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_AUTH_DOMAIN",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_STORAGE_BUCKET",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
-    };
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'drink-tracker-2026';
-const apiKey = ""; // 如果需要 AI 功能，請在此填入 Google Gemini API Key
+  <style>
+    html, body { height: 100%; }
+    body { -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
 
-const ICE_LEVELS = ['正常', '少冰', '微冰', '去冰', '常溫', '溫'];
-const SUGAR_LEVELS = ['全糖', '少糖', '半糖', '微糖', '一分糖', '無糖'];
-const TOPPINGS = ['珍珠', '燕麥', '粉粿', '粉角', '粉圓', '雙Q', '仙草', '芋圓'];
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
-const MONTHS = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
-
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
-  const [selectedDate, setSelectedDate] = useState(null);
-  const [allRecords, setAllRecords] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [saveStatus, setSaveStatus] = useState('');
-  
-  // AI 相關狀態
-  const [aiAnalysis, setAiAnalysis] = useState('');
-  const [isAiLoading, setIsAiLoading] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (err) {
-        console.error("Auth initialization failed:", err);
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!user) return;
-    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'records', 'yearly2026');
-    const unsubscribe = onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setAllRecords(docSnap.data().data || {});
-      }
-      setLoading(false);
-    }, (error) => {
-      console.error("Firestore Listen Error:", error);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [user]);
-
-  const saveToCloud = async (newData) => {
-    if (!user) return;
-    setSaveStatus('儲存中...');
-    try {
-      await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', 'yearly2026'), {
-        data: newData,
-        lastUpdated: new Date().toISOString()
-      });
-      setSaveStatus('已安全儲存');
-      setTimeout(() => setSaveStatus(''), 2000);
-    } catch (e) {
-      setSaveStatus('儲存失敗');
-    }
-  };
-
-  const stats = useMemo(() => {
-    const data = Object.values(allRecords).flat().filter(r => r && r.name);
-    const totalCups = data.length;
-    const totalCost = data.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
-    const storeCounts = {};
-    const itemCounts = {};
-    data.forEach(d => {
-      if (d.shop) storeCounts[d.shop] = (storeCounts[d.shop] || 0) + 1;
-      if (d.name) itemCounts[d.name] = (itemCounts[d.name] || 0) + 1;
-    });
-    return {
-      totalCups,
-      totalCost,
-      avgPrice: totalCups > 0 ? Math.round(totalCost / totalCups) : 0,
-      favoriteStore: Object.entries(storeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '無',
-      favoriteItem: Object.entries(itemCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '無',
-      rawHistory: data
-    };
-  }, [allRecords]);
-
-  // ✨ Gemini API: 分析飲品趨勢與推薦
-  const getAiInsight = async () => {
-    if (!apiKey) {
-      setAiAnalysis("請先設定 API Key 以啟用 AI 功能。");
-      return;
-    }
-    setIsAiLoading(true);
-    const recentDrinks = stats.rawHistory.slice(-10).map(d => `${d.shop} 的 ${d.name} (${d.sugar}, ${d.ice})`).join(', ');
-    const prompt = `我最近喝了這些手搖飲：${recentDrinks || '尚未記錄'}。
-    請根據這些歷史記錄：
-    1. 分析我的口味偏好（例如：喜歡茶類、喜歡奶類、或是偏好某種配料）。
-    2. 給我一個 ✨「今日推薦組合」：推薦一家台灣常見飲料店、一個具體品項、以及你建議的甜度冰塊與加料。
-    3. 給我一小段幽默的健康叮嚀。
-    請用繁體中文回答，語氣要活潑親切，像是一位資深飲料店店長。`;
-
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-      });
-      const result = await response.json();
-      const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-      setAiAnalysis(text);
-    } catch (error) {
-      setAiAnalysis("AI 休息中，請稍後再試。");
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
-
-  // ✨ Gemini TTS: 唸出年度統計數據
-  const speakStats = async () => {
-    if (!apiKey) return;
-    setIsSpeaking(true);
-    const text = `店長報數時間！你在 2026 年已經喝了 ${stats.totalCups} 杯飲料，總共花了 ${stats.totalCost} 元。平均一杯是 ${stats.avgPrice} 元。你最愛的飲料店是 ${stats.favoriteStore}，最愛的品項則是 ${stats.favoriteItem}。喝飲料也要記得喝水喔！`;
-    
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `Say warmly and cheerfully: ${text}` }] }],
-          generationConfig: {
-            responseModalities: ["AUDIO"],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } }
-          },
-          model: "gemini-2.5-flash-preview-tts"
-        })
-      });
-      const result = await response.json();
-      const base64Audio = result.candidates[0].content.parts[0].inlineData.data;
-      
-      const audioBlob = await (await fetch(`data:audio/l16;rate=24000;base64,${base64Audio}`)).blob();
-      const arrayBuffer = await audioBlob.arrayBuffer();
-      
-      const wavHeader = new ArrayBuffer(44);
-      const view = new DataView(wavHeader);
-      const writeString = (offset, string) => { for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i)); };
-      writeString(0, 'RIFF');
-      view.setUint32(4, 36 + arrayBuffer.byteLength, true);
-      writeString(8, 'WAVE');
-      writeString(12, 'fmt ');
-      view.setUint32(16, 16, true);
-      view.setUint16(20, 1, true);
-      view.setUint16(22, 1, true);
-      view.setUint32(24, 24000, true);
-      view.setUint32(28, 48000, true);
-      view.setUint16(32, 2, true);
-      view.setUint16(34, 16, true);
-      writeString(36, 'data');
-      view.setUint32(40, arrayBuffer.byteLength, true);
-      
-      const blob = new Blob([wavHeader, arrayBuffer], { type: 'audio/wav' });
-      const audio = new Audio(URL.createObjectURL(blob));
-      audio.onended = () => setIsSpeaking(false);
-      audio.play();
-    } catch (error) {
-      console.error(error);
-      setIsSpeaking(false);
-    }
-  };
-
-  const handleQuickRecord = () => {
-    const today = new Date();
-    setSelectedDate(today.getDate());
-    setCurrentDate(new Date(2026, today.getMonth(), 1));
-  };
-
-  const updateEntry = (dateKey, index, field, value) => {
-    const updated = { ...allRecords };
-    if (!updated[dateKey]) updated[dateKey] = [{}, {}];
-    const dayData = [...updated[dateKey]];
-    dayData[index] = { ...dayData[index], [field]: value };
-    updated[dateKey] = dayData;
-    setAllRecords(updated);
-  };
-
-  const clearEntry = (dateKey, index) => {
-    const updated = { ...allRecords };
-    if (updated[dateKey]) {
-      const dayData = [...updated[dateKey]];
-      dayData[index] = {};
-      updated[dateKey] = dayData;
-      setAllRecords(updated);
-      saveToCloud(updated);
-    }
-  };
-
-  if (loading) return (
-    <div className="flex h-screen items-center justify-center bg-sky-50">
-      <div className="text-sky-500 animate-bounce flex flex-col items-center">
-        <CupSoda size={48} />
-        <span className="mt-4 font-bold">開啟手搖日誌中...</span>
-      </div>
+<body class="min-h-screen bg-gradient-to-b from-sky-400 via-sky-100 to-white font-sans">
+  <div class="bg-white/90 sticky top-0 z-40 backdrop-blur-md shadow-sm px-6 py-3 flex justify-between items-center">
+    <div class="flex items-center gap-2 text-sky-600 font-black text-xl">
+      <i data-lucide="cup-soda" class="w-6 h-6"></i>
+      我超愛喝手搖
     </div>
-  );
+    <div class="flex items-center gap-4">
+      <span id="saveStatus" class="text-xs font-bold text-sky-400"></span>
+      <button id="btnQuick"
+        class="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 shadow-lg shadow-sky-200 active:scale-95 transition-all">
+        <i data-lucide="zap" class="w-4 h-4"></i>
+        快速紀錄今天
+      </button>
+    </div>
+  </div>
 
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-sky-400 via-sky-100 to-white pb-12 font-sans">
-      <div className="bg-white/90 sticky top-0 z-40 backdrop-blur-md shadow-sm px-6 py-3 flex justify-between items-center">
-        <div className="flex items-center gap-2 text-sky-600 font-black text-xl">
-          <CupSoda className="animate-pulse" /> 我超愛喝手搖
+  <main class="max-w-6xl mx-auto px-4 mt-8 space-y-8 pb-24">
+    <section class="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div class="bg-white/80 backdrop-blur rounded-[2rem] p-5 shadow-lg border border-white flex items-center gap-4">
+        <div class="p-3 bg-sky-100 rounded-2xl text-sky-500"><i data-lucide="cup-soda"></i></div>
+        <div>
+          <p class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">年度杯數</p>
+          <p class="text-lg font-black text-slate-700"><span id="statCups">0</span>杯</p>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-xs font-bold text-sky-400">{saveStatus}</span>
-          <button
-            onClick={handleQuickRecord}
-            className="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 shadow-lg shadow-sky-200 transition-all active:scale-95"
-          >
-            <Zap size={16} /> 快速紀錄今天
+      </div>
+
+      <div class="bg-white/80 backdrop-blur rounded-[2rem] p-5 shadow-lg border border-white flex items-center gap-4">
+        <div class="p-3 bg-sky-100 rounded-2xl text-sky-500"><i data-lucide="wallet"></i></div>
+        <div>
+          <p class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">年度總支出</p>
+          <p class="text-lg font-black text-slate-700"><span id="statCost">0</span>元</p>
+        </div>
+      </div>
+
+      <div class="bg-white/80 backdrop-blur rounded-[2rem] p-5 shadow-lg border border-white flex items-center gap-4">
+        <div class="p-3 bg-sky-100 rounded-2xl text-sky-500"><i data-lucide="trending-up"></i></div>
+        <div>
+          <p class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">平均單價</p>
+          <p class="text-lg font-black text-slate-700"><span id="statAvg">0</span>元</p>
+        </div>
+      </div>
+
+      <div class="bg-white/80 backdrop-blur rounded-[2rem] p-5 shadow-lg border border-white flex items-center gap-4">
+        <div class="p-3 bg-sky-100 rounded-2xl text-sky-500"><i data-lucide="store"></i></div>
+        <div>
+          <p class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">最愛店家</p>
+          <p class="text-lg font-black text-slate-700 truncate max-w-[120px]" id="statFavStore">無</p>
+        </div>
+      </div>
+
+      <div class="bg-white/80 backdrop-blur rounded-[2rem] p-5 shadow-lg border border-white flex items-center gap-4">
+        <div class="p-3 bg-sky-100 rounded-2xl text-sky-500"><i data-lucide="plus"></i></div>
+        <div>
+          <p class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">最愛品項</p>
+          <p class="text-lg font-black text-slate-700 truncate max-w-[120px]" id="statFavItem">無</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
+      <div class="bg-sky-500 p-8 flex items-center justify-between text-white">
+        <button id="btnPrev" class="p-2 hover:bg-white/20 rounded-full transition-colors">
+          <i data-lucide="chevron-left" class="w-8 h-8"></i>
+        </button>
+
+        <div class="text-center">
+          <h2 id="monthTitle" class="text-3xl font-black">一月</h2>
+          <p id="yearTitle" class="opacity-80 font-bold">2026</p>
+        </div>
+
+        <button id="btnNext" class="p-2 hover:bg-white/20 rounded-full transition-colors">
+          <i data-lucide="chevron-right" class="w-8 h-8"></i>
+        </button>
+      </div>
+
+      <div class="p-6 md:p-10">
+        <div class="grid grid-cols-7 mb-6 text-sky-300 font-black text-center uppercase tracking-widest text-sm">
+          <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+        </div>
+        <div id="calendarGrid" class="grid grid-cols-7 gap-3"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="modal" class="fixed inset-0 bg-sky-900/80 backdrop-blur-md z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-[3rem] w-full max-w-5xl max-h-[90vh] overflow-y-auto shadow-2xl relative">
+      <div class="sticky top-0 bg-white/80 backdrop-blur-md px-8 py-6 flex justify-between items-center border-b border-sky-50 z-20">
+        <h3 id="modalTitle" class="text-2xl font-black text-sky-600 flex items-center gap-3">
+          <i data-lucide="calendar" class="w-7 h-7"></i>
+          2026 / 1 / 1
+        </h3>
+        <div class="flex gap-4">
+          <button id="btnClose" class="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
+            <i data-lucide="x" class="w-7 h-7"></i>
+          </button>
+          <button id="btnSave"
+            class="bg-sky-500 hover:bg-sky-600 text-white px-10 py-3 rounded-full font-black flex items-center gap-2 shadow-xl shadow-sky-200 active:scale-95 transition-all">
+            <i data-lucide="save" class="w-5 h-5"></i>
+            儲存紀錄
           </button>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 mt-8 space-y-8">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <StatMiniCard icon={<CupSoda />} label="年度杯數" value={stats.totalCups} unit="杯" />
-          <StatMiniCard icon={<Wallet />} label="年度總支出" value={stats.totalCost} unit="元" />
-          <StatMiniCard icon={<TrendingUp />} label="平均單價" value={stats.avgPrice} unit="元" />
-          <StatMiniCard icon={<Store />} label="最愛店家" value={stats.favoriteStore} />
-          <StatMiniCard icon={<Plus />} label="最愛品項" value={stats.favoriteItem} />
-        </div>
-
-        <div className="bg-gradient-to-r from-sky-600 to-blue-500 rounded-[2.5rem] p-8 text-white shadow-xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:rotate-12 transition-transform">
-            <BrainCircuit size={120} />
-          </div>
-          <div className="relative z-10">
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-              <div>
-                <h3 className="text-2xl font-black flex items-center gap-2">
-                  <Sparkles className="text-amber-300" /> ✨ AI 飲品大師
-                </h3>
-                <p className="text-sky-100 font-medium">基於你的飲用紀錄為你提供專屬建議</p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={getAiInsight}
-                  disabled={isAiLoading}
-                  className="bg-white/20 hover:bg-white/30 px-6 py-2 rounded-full font-bold flex items-center gap-2 transition-all border border-white/30 backdrop-blur-sm"
-                >
-                  {isAiLoading ? <Loader2 className="animate-spin" /> : <BrainCircuit size={18} />} ✨ 分析推薦
-                </button>
-                <button
-                  onClick={speakStats}
-                  disabled={isSpeaking}
-                  className="bg-amber-400 hover:bg-amber-500 text-sky-900 px-6 py-2 rounded-full font-bold flex items-center gap-2 transition-all shadow-lg"
-                >
-                  {isSpeaking ? <Loader2 className="animate-spin" /> : <Volume2 size={18} />} ✨ 報數聽聽看
-                </button>
-              </div>
-            </div>
-            
-            {aiAnalysis ? (
-              <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 animate-in fade-in slide-in-from-bottom-2">
-                <p className="whitespace-pre-wrap leading-relaxed font-medium">{aiAnalysis}</p>
-              </div>
-            ) : (
-              <p className="text-sky-100 italic text-center py-4">點擊「✨ 分析推薦」讓 AI 幫你看看喝得健不健康！</p>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
-          <div className="bg-sky-500 p-8 flex items-center justify-between text-white">
-            <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 hover:bg-white/20 rounded-full transition-colors">
-              <ChevronLeft size={32} />
-            </button>
-            <div className="text-center">
-              <h2 className="text-3xl font-black">{MONTHS[currentDate.getMonth()]}</h2>
-              <p className="opacity-80 font-bold">{currentDate.getFullYear()}</p>
-            </div>
-            <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-2 hover:bg-white/20 rounded-full transition-colors">
-              <ChevronRight size={32} />
-            </button>
-          </div>
-
-          <div className="p-6 md:p-10">
-            <div className="grid grid-cols-7 mb-6 text-sky-300 font-black text-center uppercase tracking-widest text-sm">
-              {WEEKDAYS.map(d => <div key={d}>{d}</div>)}
-            </div>
-            <div className="grid grid-cols-7 gap-3">
-              {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay() }).map((_, i) => (
-                <div key={`empty-${i}`} className="aspect-square"></div>
-              ))}
-              {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
-                const day = i + 1;
-                const key = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${day}`;
-                const hasData = allRecords[key]?.some(r => r.name);
-                return (
-                  <button
-                    key={day}
-                    onClick={() => setSelectedDate(day)}
-                    className={`aspect-square rounded-3xl border-2 flex flex-col items-center justify-center transition-all relative group
-                      ${hasData
-                        ? 'bg-sky-100 border-sky-400 shadow-inner'
-                        : 'bg-white border-sky-50 hover:border-sky-300 hover:scale-105 shadow-sm'
-                      }`}
-                  >
-                    <span className={`text-xl font-black ${hasData ? 'text-sky-600' : 'text-slate-300 group-hover:text-sky-400'}`}>
-                      {day}
-                    </span>
-                    {hasData && (
-                      <div className="mt-1 flex gap-1">
-                        {allRecords[key].filter(r => r.name).map((_, idx) => (
-                          <div key={idx} className="w-2 h-2 rounded-full bg-sky-500 animate-pulse"></div>
-                        ))}
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {selectedDate && (
-        <div className="fixed inset-0 bg-sky-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[3rem] w-full max-w-5xl max-h-[90vh] overflow-y-auto shadow-2xl relative">
-            <div className="sticky top-0 bg-white/80 backdrop-blur-md px-8 py-6 flex justify-between items-center border-b border-sky-50 z-20">
-              <h3 className="text-2xl font-black text-sky-600 flex items-center gap-3">
-                <CalendarIcon /> 2026 / {currentDate.getMonth() + 1} / {selectedDate}
-              </h3>
-              <div className="flex gap-4">
-                <button onClick={() => setSelectedDate(null)} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
-                  <X size={28} />
-                </button>
-                <button
-                  onClick={() => { saveToCloud(allRecords); setSelectedDate(null); }}
-                  className="bg-sky-500 hover:bg-sky-600 text-white px-10 py-3 rounded-full font-black flex items-center gap-2 shadow-xl shadow-sky-200 transition-all active:scale-95"
-                >
-                  <Save /> 儲存紀錄
-                </button>
-              </div>
-            </div>
-
-            <div className="p-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {[0, 1].map(idx => {
-                const dKey = `${currentDate.getFullYear()}-${currentDate.getMonth() + 1}-${selectedDate}`;
-                const data = (allRecords[dKey] && allRecords[dKey][idx]) || {};
-                return (
-                  <div key={idx} className="bg-sky-50/50 rounded-[2.5rem] p-8 border border-sky-100 relative">
-                    <div className="flex justify-between items-center mb-6">
-                      <span className="bg-white text-sky-600 px-6 py-2 rounded-full text-sm font-black shadow-sm">
-                        DRINK NO. {idx + 1}
-                      </span>
-                      <button onClick={() => clearEntry(dKey, idx)} className="text-slate-300 hover:text-red-500 transition-colors">
-                        <Trash2 size={24} />
-                      </button>
-                    </div>
-
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-2 gap-4">
-                        <InputGroup label="店名" value={data.shop} onChange={(v) => updateEntry(dKey, idx, 'shop', v)} placeholder="例如：迷客夏" />
-                        <InputGroup label="品項" value={data.name} onChange={(v) => updateEntry(dKey, idx, 'name', v)} placeholder="例如：珍珠鮮奶" />
-                      </div>
-                      <InputGroup label="價格" type="number" value={data.price} onChange={(v) => updateEntry(dKey, idx, 'price', v)} placeholder="0" />
-                      
-                      <OptionSelector label="冰塊" options={ICE_LEVELS} selected={data.ice} onSelect={(v) => updateEntry(dKey, idx, 'ice', v)} />
-                      <OptionSelector label="甜度" options={SUGAR_LEVELS} selected={data.sugar} onSelect={(v) => updateEntry(dKey, idx, 'sugar', v)} />
-                      
-                      <div>
-                        <label className="block text-xs font-black text-sky-400 mb-3 uppercase tracking-widest">加料選項</label>
-                        <div className="flex flex-wrap gap-2">
-                          {TOPPINGS.map(t => (
-                            <button
-                              key={t}
-                              onClick={() => {
-                                const list = data.toppings || [];
-                                const newList = list.includes(t) ? list.filter(x => x !== t) : [...list, t];
-                                updateEntry(dKey, idx, 'toppings', newList);
-                              }}
-                              className={`px-4 py-2 rounded-2xl text-sm font-bold transition-all ${data.toppings?.includes(t) ? 'bg-sky-500 text-white' : 'bg-white text-slate-400 hover:bg-sky-100'}`}
-                            >
-                              {t}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
+      <div id="modalBody" class="p-8 grid grid-cols-1 lg:grid-cols-2 gap-8"></div>
     </div>
-  );
-}
+  </div>
 
-function StatMiniCard({ icon, label, value, unit = "" }) {
-  return (
-    <div className="bg-white/80 backdrop-blur rounded-[2rem] p-5 shadow-lg border border-white flex items-center gap-4 group hover:scale-105 transition-transform">
-      <div className="p-3 bg-sky-100 rounded-2xl text-sky-500 group-hover:bg-sky-500 group-hover:text-white transition-colors">
-        {icon}
-      </div>
-      <div>
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{label}</p>
-        <p className="text-lg font-black text-slate-700 truncate max-w-[100px]">{value}{unit}</p>
-      </div>
-    </div>
-  );
-}
-
-function InputGroup({ label, value, onChange, placeholder, type = "text" }) {
-  return (
-    <div>
-      <label className="block text-xs font-black text-sky-400 mb-2 uppercase tracking-widest">{label}</label>
-      <input
-        type={type}
-        className="w-full bg-white border-2 border-transparent focus:border-sky-200 rounded-2xl px-4 py-3 text-slate-700 font-bold outline-none transition-all placeholder:text-slate-200 shadow-sm"
-        placeholder={placeholder}
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </div>
-  );
-}
-
-function OptionSelector({ label, options, selected, onSelect }) {
-  return (
-    <div>
-      <label className="block text-xs font-black text-sky-400 mb-3 uppercase tracking-widest">{label}</label>
-      <div className="grid grid-cols-3 gap-2">
-        {options.map(opt => (
-          <button
-            key={opt}
-            onClick={() => onSelect(opt)}
-            className={`py-2 rounded-xl text-xs font-bold transition-all ${selected === opt ? 'bg-sky-500 text-white shadow-lg' : 'bg-white text-slate-400 hover:border-sky-200 border-2 border-transparent'}`}
-          >
-            {opt}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
+  <script type="module" src="./app.js"></script>
+  <script>lucide.createIcons();</script>
+</body>
+</html>
