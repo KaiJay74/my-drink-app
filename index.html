@@ -2,131 +2,32 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="我超愛喝手搖">
-  <meta name="theme-color" content="#0ea5e9">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
   <title>我超愛喝手搖</title>
 
+  <!-- PWA / iOS fullscreen -->
+  <meta name="theme-color" content="#0ea5e9" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="我超愛喝手搖" />
+
+  <link rel="manifest" href="./manifest.json" />
+
+  <!-- Tailwind CDN（先用這個就好；你目前是 GitHub Pages 靜態站，這樣最快） -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
 
   <style>
-    html, body { height: 100%; }
-    body { -webkit-tap-highlight-color: transparent; }
+    /* 讓 iPhone 全螢幕時的安全區域不會被瀏海/底部吃掉 */
+    body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
   </style>
 </head>
 
-<body class="min-h-screen bg-gradient-to-b from-sky-400 via-sky-100 to-white font-sans">
-  <div class="bg-white/90 sticky top-0 z-40 backdrop-blur-md shadow-sm px-6 py-3 flex justify-between items-center">
-    <div class="flex items-center gap-2 text-sky-600 font-black text-xl">
-      <i data-lucide="cup-soda" class="w-6 h-6"></i>
-      我超愛喝手搖
-    </div>
-    <div class="flex items-center gap-4">
-      <span id="saveStatus" class="text-xs font-bold text-sky-400"></span>
-      <button id="btnQuick"
-        class="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 shadow-lg shadow-sky-200 active:scale-95 transition-all">
-        <i data-lucide="zap" class="w-4 h-4"></i>
-        快速紀錄今天
-      </button>
-    </div>
-  </div>
+<body class="bg-sky-50">
+  <div id="app" class="min-h-screen"></div>
 
-  <main class="max-w-6xl mx-auto px-4 mt-8 space-y-8 pb-24">
-    <section class="grid grid-cols-2 md:grid-cols-5 gap-4">
-      <div class="bg-white/80 backdrop-blur rounded-[2rem] p-5 shadow-lg border border-white flex items-center gap-4">
-        <div class="p-3 bg-sky-100 rounded-2xl text-sky-500"><i data-lucide="cup-soda"></i></div>
-        <div>
-          <p class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">年度杯數</p>
-          <p class="text-lg font-black text-slate-700"><span id="statCups">0</span>杯</p>
-        </div>
-      </div>
-
-      <div class="bg-white/80 backdrop-blur rounded-[2rem] p-5 shadow-lg border border-white flex items-center gap-4">
-        <div class="p-3 bg-sky-100 rounded-2xl text-sky-500"><i data-lucide="wallet"></i></div>
-        <div>
-          <p class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">年度總支出</p>
-          <p class="text-lg font-black text-slate-700"><span id="statCost">0</span>元</p>
-        </div>
-      </div>
-
-      <div class="bg-white/80 backdrop-blur rounded-[2rem] p-5 shadow-lg border border-white flex items-center gap-4">
-        <div class="p-3 bg-sky-100 rounded-2xl text-sky-500"><i data-lucide="trending-up"></i></div>
-        <div>
-          <p class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">平均單價</p>
-          <p class="text-lg font-black text-slate-700"><span id="statAvg">0</span>元</p>
-        </div>
-      </div>
-
-      <div class="bg-white/80 backdrop-blur rounded-[2rem] p-5 shadow-lg border border-white flex items-center gap-4">
-        <div class="p-3 bg-sky-100 rounded-2xl text-sky-500"><i data-lucide="store"></i></div>
-        <div>
-          <p class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">最愛店家</p>
-          <p class="text-lg font-black text-slate-700 truncate max-w-[120px]" id="statFavStore">無</p>
-        </div>
-      </div>
-
-      <div class="bg-white/80 backdrop-blur rounded-[2rem] p-5 shadow-lg border border-white flex items-center gap-4">
-        <div class="p-3 bg-sky-100 rounded-2xl text-sky-500"><i data-lucide="plus"></i></div>
-        <div>
-          <p class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">最愛品項</p>
-          <p class="text-lg font-black text-slate-700 truncate max-w-[120px]" id="statFavItem">無</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-white">
-      <div class="bg-sky-500 p-8 flex items-center justify-between text-white">
-        <button id="btnPrev" class="p-2 hover:bg-white/20 rounded-full transition-colors">
-          <i data-lucide="chevron-left" class="w-8 h-8"></i>
-        </button>
-
-        <div class="text-center">
-          <h2 id="monthTitle" class="text-3xl font-black">一月</h2>
-          <p id="yearTitle" class="opacity-80 font-bold">2026</p>
-        </div>
-
-        <button id="btnNext" class="p-2 hover:bg-white/20 rounded-full transition-colors">
-          <i data-lucide="chevron-right" class="w-8 h-8"></i>
-        </button>
-      </div>
-
-      <div class="p-6 md:p-10">
-        <div class="grid grid-cols-7 mb-6 text-sky-300 font-black text-center uppercase tracking-widest text-sm">
-          <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
-        </div>
-        <div id="calendarGrid" class="grid grid-cols-7 gap-3"></div>
-      </div>
-    </section>
-  </main>
-
-  <div id="modal" class="fixed inset-0 bg-sky-900/80 backdrop-blur-md z-50 hidden items-center justify-center p-4">
-    <div class="bg-white rounded-[3rem] w-full max-w-5xl max-h-[90vh] overflow-y-auto shadow-2xl relative">
-      <div class="sticky top-0 bg-white/80 backdrop-blur-md px-8 py-6 flex justify-between items-center border-b border-sky-50 z-20">
-        <h3 id="modalTitle" class="text-2xl font-black text-sky-600 flex items-center gap-3">
-          <i data-lucide="calendar" class="w-7 h-7"></i>
-          2026 / 1 / 1
-        </h3>
-        <div class="flex gap-4">
-          <button id="btnClose" class="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400">
-            <i data-lucide="x" class="w-7 h-7"></i>
-          </button>
-          <button id="btnSave"
-            class="bg-sky-500 hover:bg-sky-600 text-white px-10 py-3 rounded-full font-black flex items-center gap-2 shadow-xl shadow-sky-200 active:scale-95 transition-all">
-            <i data-lucide="save" class="w-5 h-5"></i>
-            儲存紀錄
-          </button>
-        </div>
-      </div>
-
-      <div id="modalBody" class="p-8 grid grid-cols-1 lg:grid-cols-2 gap-8"></div>
-    </div>
-  </div>
-
+  <!-- 版本號：每次更新就改一下，永遠不怕快取 -->
   <script type="module" src="./app.js?v=20260102-1"></script>
 </body>
 </html>
-
-
