@@ -11,12 +11,12 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#0ea5e9">
     
-    <!-- 桌面圖示 (你可以替換成自己的圖片網址) -->
+    <!-- 桌面圖示 -->
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3054/3054889.png">
     
     <title>我超愛喝手搖 2026</title>
     
-    <!-- 引入外部資源 (React & Tailwind) -->
+    <!-- 引入外部資源 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -24,7 +24,6 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
-        /* 禁止橡皮筋回彈與長按菜單，確保 App 沉浸感 */
         body, html {
             margin: 0;
             padding: 0;
@@ -48,7 +47,6 @@
         .scroll-container::-webkit-scrollbar {
             display: none;
         }
-        /* 滑動進場動畫 */
         @keyframes slideUp {
             from { transform: translateY(100%); }
             to { transform: translateY(0); }
@@ -61,18 +59,30 @@
 <body>
     <div id="root"></div>
 
-    <script type="text/babel">
-        // 注意：這裡的 __firebase_config 應替換為你實際的 Firebase 配置字串
-        // 如果是在此預覽環境中，它會自動讀取；手動部署時請將下方 JSON 換成你的 Firebase SDK 配置
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'my-drink-app';
-
-        // 引入 Firebase SDK
+    <!-- Firebase SDK 必須先載入 -->
+    <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
+        // 將 Firebase 實例掛載到 window 以供 Babel 腳本使用
+        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, setDoc, onSnapshot };
+    </script>
+
+    <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
+
+        // --- 重要：手動部署設定 ---
+        const firebaseConfig = {
+            apiKey: "你的_API_KEY",
+            authDomain: "你的_PROJECT_ID.firebaseapp.com",
+            projectId: "你的_PROJECT_ID",
+            storageBucket: "你的_PROJECT_ID.appspot.com",
+            messagingSenderId: "你的_SENDER_ID",
+            appId: "你的_APP_ID"
+        };
+        
+        const appId = 'my-drink-app';
 
         function App() {
             const [user, setUser] = useState(null);
@@ -80,34 +90,61 @@
             const [currentDate, setCurrentDate] = useState(new Date(2026, 0, 1));
             const [selectedDate, setSelectedDate] = useState(null);
             const [loading, setLoading] = useState(true);
-
-            // 初始化 Firebase 服務
-            const app = initializeApp(firebaseConfig);
-            const auth = getAuth(app);
-            const db = getFirestore(app);
+            const [isDemo, setIsDemo] = useState(false);
 
             useEffect(() => {
-                signInAnonymously(auth);
-                const unsubAuth = onAuthStateChanged(auth, (u) => setUser(u));
-                return () => unsubAuth();
+                const initFirebase = async () => {
+                    const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, onSnapshot } = window.FirebaseSDK;
+
+                    if (firebaseConfig.apiKey === "你的_API_KEY") {
+                        setIsDemo(true);
+                        setLoading(false);
+                        return;
+                    }
+
+                    try {
+                        const app = initializeApp(firebaseConfig);
+                        const auth = getAuth(app);
+                        const db = getFirestore(app);
+
+                        await signInAnonymously(auth);
+                        onAuthStateChanged(auth, (u) => {
+                            setUser(u);
+                            if (u) {
+                                const docRef = doc(db, 'artifacts', appId, 'users', u.uid, 'records', 'yearly2026');
+                                onSnapshot(docRef, (docSnap) => {
+                                    if (docSnap.exists()) setAllRecords(docSnap.data().data || {});
+                                    setLoading(false);
+                                }, (error) => {
+                                    setLoading(false);
+                                });
+                            }
+                        });
+                    } catch (e) {
+                        setIsDemo(true);
+                        setLoading(false);
+                    }
+                };
+                
+                initFirebase();
             }, []);
 
-            useEffect(() => {
-                if (!user) return;
-                const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'records', 'yearly2026');
-                const unsubSnap = onSnapshot(docRef, (docSnap) => {
-                    if (docSnap.exists()) setAllRecords(docSnap.data().data || {});
-                    setLoading(false);
-                }, () => setLoading(false));
-                return () => unsubSnap();
-            }, [user]);
-
             const saveToCloud = async (newData) => {
+                if (isDemo) {
+                    setAllRecords(newData);
+                    return;
+                }
                 if (!user) return;
-                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', 'yearly2026'), {
-                    data: newData,
-                    lastUpdated: new Date().toISOString()
-                });
+                try {
+                    const { getFirestore, doc, setDoc } = window.FirebaseSDK;
+                    const db = getFirestore();
+                    await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'records', 'yearly2026'), {
+                        data: newData,
+                        lastUpdated: new Date().toISOString()
+                    });
+                } catch (e) {
+                    console.error("Save error", e);
+                }
             };
 
             const stats = useMemo(() => {
@@ -121,24 +158,29 @@
             if (loading) return (
                 <div className="h-full flex flex-col items-center justify-center bg-sky-50 text-sky-500">
                     <div className="animate-bounce mb-4"><i data-lucide="cup-soda" style={{width: 64, height: 64}}></i></div>
-                    <p className="font-black text-xs tracking-widest uppercase">載入資料中...</p>
+                    <p className="font-black text-xs tracking-widest uppercase">載入中...</p>
                 </div>
             );
 
             return (
                 <div className="h-full flex flex-col">
-                    {/* 頂部標題 */}
                     <div className="bg-sky-500 pt-[env(safe-area-inset-top)] shrink-0 shadow-lg">
                         <div className="px-6 py-4 flex justify-between items-center text-white">
                             <h1 className="font-black text-xl flex items-center gap-2">
                                 <i data-lucide="cup-soda"></i> 手搖紀錄 2026
                             </h1>
-                            <div className="bg-white/20 px-3 py-1 rounded-full text-[10px] font-bold">雲端同步中</div>
+                            <div className={`px-3 py-1 rounded-full text-[10px] font-bold ${isDemo ? 'bg-orange-400' : 'bg-white/20'}`}>
+                                {isDemo ? '預覽模式' : '雲端同步中'}
+                            </div>
                         </div>
                     </div>
 
-                    {/* 主內容區 */}
                     <div className="scroll-container bg-slate-50 p-6 space-y-6">
+                        {isDemo && (
+                            <div className="bg-orange-50 border border-orange-100 p-4 rounded-2xl text-orange-600 text-[10px] font-bold">
+                                提醒：請至代碼中替換 Firebase 金鑰以啟用雲端存取。
+                            </div>
+                        )}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100 h-28 flex flex-col justify-between">
                                 <span className="text-[10px] font-black text-slate-400 tracking-widest uppercase">總杯數</span>
@@ -150,7 +192,6 @@
                             </div>
                         </div>
 
-                        {/* 日曆卡片 */}
                         <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
                             <div className="p-6 bg-slate-50/50 flex justify-between items-center">
                                 <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}>
@@ -185,7 +226,6 @@
                         </div>
                     </div>
 
-                    {/* 底部 Tab Bar */}
                     <div className="bg-white/80 backdrop-blur-xl border-t border-slate-100 px-10 pt-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] flex justify-around shrink-0">
                         <button className="text-sky-500 flex flex-col items-center gap-1">
                             <i data-lucide="calendar"></i>
@@ -197,7 +237,6 @@
                         </button>
                     </div>
 
-                    {/* 編輯頁面 */}
                     {selectedDate && (
                         <div className="fixed inset-0 bg-white z-[100] flex flex-col pt-[env(safe-area-inset-top)] animate-slide-up">
                             <div className="px-6 py-4 border-b flex justify-between items-center bg-white sticky top-0">
@@ -265,7 +304,6 @@
             );
         }
 
-        // 初始化
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
         setInterval(() => lucide.createIcons(), 500);
