@@ -1,5 +1,5 @@
 {
-  "name": "羽詩愛喝手搖",
+  "name": "我超愛喝手搖",
   "short_name": "手搖日誌",
   "start_url": "./",
   "display": "standalone",
@@ -7,12 +7,12 @@
   "theme_color": "#0ea5e9",
   "icons": [
     {
-      "src": "./icon-cat-drink-192.png",
+      "src": "cute_cat.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "./icon-cat-drink-512.png",
+      "src": "cute_cat.png",
       "sizes": "512x512",
       "type": "image/png"
     }
