@@ -26,7 +26,7 @@ const firebaseConfig = {
 const APP_ID = "my-drink-app";
 
 /** options */
-const ICE_LEVELS = ["正常", "少冰", "微冰", "去冰", "常溫", "溫"];
+const ICE_LEVELS = ["正常", "少冰", "微冰", "去冰", "常溫", "熱"];
 const SUGAR_LEVELS = ["全糖", "少糖", "半糖", "微糖", "一分糖", "無糖"];
 
 // ✅ 你要求的加料（含常見同義）
