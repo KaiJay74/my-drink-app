@@ -17,19 +17,16 @@
     <meta name="apple-mobile-web-app-title" content="手搖日誌" />
     <meta name="mobile-web-app-capable" content="yes" />
 
-    <!-- Manifest（檔名要跟 repo 一樣，不要 404） -->
-    <link rel="manifest" href="./manifest.webmanifest" />
+    <!-- Manifest -->
+    <link rel="manifest" href="./manifest.json" />
 
-    <!-- iOS icon（請確保 repo 真的有這個檔案） -->
-    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <!-- iOS icon -->
+    <link rel="apple-touch-icon" href="./cute_cat.png" />
 
     <title>我超愛喝手搖</title>
 
-    <!-- Tailwind（開發用 CDN OK；正式版再考慮打包） -->
+    <!-- Tailwind (CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Lucide icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
       html,
@@ -38,26 +35,21 @@
       }
       body {
         margin: 0;
-        overflow-x: hidden;
-      }
-      /* iOS scroll */
-      .ios-scroll {
-        -webkit-overflow-scrolling: touch;
-      }
-      .no-scrollbar::-webkit-scrollbar {
-        display: none;
+        background: #f8fafc;
       }
     </style>
   </head>
 
   <body class="bg-slate-50">
-    <!-- App Root -->
     <div id="app"></div>
 
-    <!-- 主程式 -->
+    <!-- Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Main -->
     <script type="module" src="./app.js"></script>
 
-    <!-- Service Worker（你有 sw.js 才會成功註冊） -->
+    <!-- Service Worker -->
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
