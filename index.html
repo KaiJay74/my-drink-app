@@ -37,11 +37,18 @@
         margin: 0;
         background: #f8fafc;
       }
+      /* 讓 iPhone 安全區域生效（動態島/瀏海/底部 Home bar） */
+      #app {
+        min-height: 100vh;
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+      }
     </style>
   </head>
 
   <body class="bg-slate-50">
-    <div id="app"></div>
+    <!-- ✅ 關鍵：safe-area padding 要在最外層 -->
+    <div id="app" class="bg-slate-50"></div>
 
     <!-- Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
